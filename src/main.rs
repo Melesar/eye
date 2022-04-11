@@ -1,5 +1,6 @@
 mod networking;
 
+use std::process::{Command, Stdio};
 use std::convert::TryInto;
 use std::io::Result;
 use std::net::{Ipv4Addr, UdpSocket};
@@ -29,7 +30,10 @@ async fn main() {
         return;
     }
 
-    //TODO check for motion availability
+    if !check_camera_availability() {
+        eprintln!("Camera is not available. Shutting down");
+        return;
+    }
 
     //TODO optionally: check for gpio availability
 
@@ -102,6 +106,14 @@ fn enable_camera() {
 
 fn disable_camera() {
 
+}
+
+fn check_camera_availability() -> bool {
+    Command::new("motion")
+        .arg("-h")
+        .stdout(Stdio::null())
+        .status()
+        .is_ok()
 }
 
 
