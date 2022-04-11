@@ -6,7 +6,8 @@ use std::net::{Ipv4Addr, UdpSocket};
 use std::time::Duration;
 use std::u128;
 
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpSocket;
 
 #[derive(Clone)]
 pub struct ServerConfig {
@@ -24,7 +25,7 @@ enum Event {
 async fn main() {
     //Testing code
     if cfg!(feature = "client") {
-        start_client().expect("Client failed");
+        start_client().await.expect("Client failed");
         return;
     }
 
@@ -54,10 +55,13 @@ async fn main() {
                 tokio::spawn(async move {
                     let (reader, _writer) = socket.split();
                     let mut reader = tokio::io::BufReader::new(reader);
-                    let code = reader.read_u128().await.unwrap_or(0);
+                    let code = reader.read_u128_le().await.unwrap_or(0);
+                    println!("Received code {}", code);
                     if code == 0 {
+                        println!("Disconnecting the client");
                         sender.send(Event::Disconnected).await.unwrap_or_default();
                     } else if config.code == code {
+                        println!("Client is connected");
                         sender.send(Event::Connected).await.unwrap_or_default();
                     }
                 });
@@ -101,7 +105,7 @@ fn disable_camera() {
 }
 
 
-fn start_client() -> Result<()> {
+async fn start_client() -> Result<()> {
     let socket = UdpSocket::bind("0.0.0.0:6688")?;
     let multi_address = Ipv4Addr::new(239, 255, 6, 6);
     assert!(multi_address.is_multicast());
@@ -117,9 +121,13 @@ fn start_client() -> Result<()> {
     let msg_length = u32::from_le_bytes(int_bytes.try_into().unwrap());
     println!("Message length: {}", msg_length);
 
-    let (_code, rest) = rest.split_at(16_usize);
+    let (mut code, rest) = rest.split_at(16_usize);
     let (name_bytes, _) = rest.split_at((msg_length - 16) as usize);
     println!("Server name: {}", String::from_utf8(name_bytes.into()).unwrap());
+    drop(socket);
+
+    let mut tcp_stream = TcpSocket::new_v4()?.connect(sender).await?;
+    tcp_stream.write_all_buf(&mut code).await?;
 
     Ok(())
 }
