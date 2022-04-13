@@ -128,7 +128,6 @@ fn start_multicasting(config: &ServerConfig) -> Result<()> {
 
 fn enable_camera() -> Result<Child> {
     Command::new("motion")
-        .arg("-b")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -199,7 +198,8 @@ async fn start_client() -> Result<()> {
 
     println!("Received address {}:{}", address, port);
 
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    let mut s = String::new();
+    std::io::stdin().read_line(&mut s).unwrap_or_default();
 
     tcp_stream.shutdown().await?;
 
