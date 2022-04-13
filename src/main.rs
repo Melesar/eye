@@ -1,15 +1,16 @@
 mod networking;
 
-use std::process::{Command, Stdio};
+use std::process::{Command, Stdio, Child};
 use std::convert::TryInto;
-use std::io::{Result, ErrorKind};
-use std::net::{Ipv4Addr, UdpSocket, SocketAddr};
+use std::io::Result;
+use std::net::{Ipv4Addr, UdpSocket};
 use std::time::Duration;
 use std::u128;
 
 use pnet::ipnetwork::IpNetwork;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpSocket;
+use tokio::net::{TcpSocket, TcpStream};
+use tokio::sync::mpsc::Sender;
 
 #[derive(Clone)]
 pub struct ServerConfig {
@@ -42,6 +43,7 @@ async fn main() {
 
     //TODO optionally: check for gpio availability
 
+    //TODO read config from file. Randomize the code each startup
     let config = ServerConfig { display_name: "My Raspberry".into(), code: 483921341};
 
     let multicast_config = config.clone();
@@ -55,40 +57,31 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:6688").await.unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
     let mut currently_connected = 0_u32;
+    let mut camera_process_handle : Option<Child> = None;
 
     loop {
         tokio::select! {
-            accept_result = listener.accept() => if let Ok((mut stream, _)) = accept_result {
+            accept_result = listener.accept() => if let Ok((stream, _)) = accept_result {
                 let config = config.clone();
                 let sender = tx.clone();
-                tokio::spawn(async move {
-                    let (reader, mut writer) = stream.split();
-                    let mut reader = tokio::io::BufReader::new(reader);
-                    let code = reader.read_u128_le().await.unwrap_or(0);
-                    println!("Received code {}", code);
-                    if code == 0 {
-                        sender.send(Event::Disconnected).await.unwrap_or_default();
-                    } else if config.code == code {
-                        sender.send(Event::Connected).await.unwrap_or_default();
-
-                        let mut buffer = [0u8; 6];
-                        buffer[..4].copy_from_slice(&current_ip.octets());
-                        buffer[4..].copy_from_slice(&CAMERA_PORT.to_le_bytes());
-
-                        writer.write(&buffer).await.unwrap_or_default();
-                    }
-                });
+                tokio::spawn(async move { handle_client_connection(stream, config, sender, current_ip).await });
             },
 
             receive_result = rx.recv() => match receive_result {
                 Some(Event::Connected) => {
-                    if currently_connected == 0 { enable_camera() } 
+                    println!("Client connected");
+                    if currently_connected == 0 && camera_process_handle.is_none() {
+                        println!("Enabling camera");
+                        camera_process_handle = enable_camera().ok();
+                    } 
 
                     currently_connected += 1;
                 },
                 Some(Event::Disconnected) => {
-                    if currently_connected == 1 {
-                        disable_camera();
+                    println!("Client disconnected");
+                    if currently_connected == 1 && camera_process_handle.is_some() {
+                        println!("Disabling camera");
+                        disable_camera(camera_process_handle.take().unwrap());
                         currently_connected = 0;
                     } else if currently_connected != 0 {
                         currently_connected -= 1;
@@ -97,6 +90,30 @@ async fn main() {
                 _ => {}
             }
         }
+    }
+}
+
+async fn handle_client_connection(mut stream: TcpStream, config: ServerConfig, sender: Sender<Event>, current_ip: Ipv4Addr) {
+    let (reader, mut writer) = stream.split();
+    let mut reader = tokio::io::BufReader::new(reader);
+
+    let code = reader.read_u128_le().await.unwrap_or(0);
+    if config.code == code {
+        sender.send(Event::Connected).await.unwrap_or_default();
+
+        let mut buffer = [0u8; 6];
+        buffer[..4].copy_from_slice(&current_ip.octets());
+        buffer[4..].copy_from_slice(&CAMERA_PORT.to_le_bytes());
+
+        writer.write(&buffer).await.unwrap_or_default();
+    }
+
+    loop {
+        let mut buffer : Vec<u8> = vec![];
+        match reader.read_buf(&mut buffer).await {
+            Ok(0) => { sender.send(Event::Disconnected).await.unwrap_or_default(); break; }
+            Ok(_bytes_read) => { },
+            Err(e) => { eprintln!("{}", e); break } }
     }
 }
 
@@ -109,12 +126,16 @@ fn start_multicasting(config: &ServerConfig) -> Result<()> {
     }
 }
 
-fn enable_camera() {
-
+fn enable_camera() -> Result<Child> {
+    Command::new("motion")
+        .arg("-b")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
 }
 
-fn disable_camera() {
-
+fn disable_camera(mut camera_process_handle: Child) {
+    camera_process_handle.kill().unwrap_or_default();
 }
 
 fn get_current_ip_address() -> Result<Ipv4Addr> {
@@ -169,7 +190,7 @@ async fn start_client() -> Result<()> {
     tcp_stream.write_all_buf(&mut code).await?;
 
     let mut buffer = vec![];
-    tcp_stream.read_to_end(&mut buffer).await?;
+    tcp_stream.read_buf(&mut buffer).await?;
 
     let address = Ipv4Addr::new(buffer[0], buffer[1], buffer[2], buffer[3]);
     let mut port_bytes = [0u8; 2];
@@ -177,6 +198,10 @@ async fn start_client() -> Result<()> {
     let port = u16::from_le_bytes(port_bytes);
 
     println!("Received address {}:{}", address, port);
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    tcp_stream.shutdown().await?;
 
     Ok(())
 }
