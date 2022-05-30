@@ -12,6 +12,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpSocket, TcpStream};
 use tokio::sync::mpsc::Sender;
 
+pub mod messages {
+    include!(concat!(env!("OUT_DIR"), "/messages.rs"));
+}
+
 #[derive(Clone)]
 pub struct ServerConfig {
    pub display_name: String,

@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package messages;
+
+message Hello {
+	string streamHost = 1;
+	int32 streamPort = 2;
+}
+

@@ -9,6 +9,11 @@ edition = "2018"
 gpio = "*"
 pnet = "*"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"]}
+prost = "0.10"
+bytes = "0.4.12"
+
+[build-dependencies]
+prost-build = { version = "0.10" }
 
 [features]
 client = []
