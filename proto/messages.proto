@@ -2,7 +2,11 @@ syntax = "proto3";
 
 package messages;
 
-message Hello {
+message HelloRequest {
+	int32 code = 1;
+}
+
+message HelloResponse {
 	string streamHost = 1;
 	int32 streamPort = 2;
 }
