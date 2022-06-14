@@ -25,8 +25,10 @@ async fn main() -> Result<(), std::io::Error> {
         Err(e) => eprintln!("Failed to encode a message {}", e),
     }
 
-    let number = tcp_stream.read_u32().await?;
-    println!("Got back a number: {}", number);
+    println!("Getting ready to receive a message");
+    let mut receive_buffer = [0_u8; 100];
+    let bytes_read = tcp_stream.read(&mut receive_buffer).await?;
+    println!("Received {} bytes back from the server", bytes_read);
 
     Ok(())
 }

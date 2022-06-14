@@ -2,11 +2,43 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use std::io::Cursor;
 
 
-pub async fn send_message<Msg, W>(writer: &mut W, message: Msg) -> Result<(), std::io::Error> 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MessageType {
+    HelloRequest,
+    HelloResponse
+}
+
+thread_local! {
+    static MESSAGES_LOOKUP: Vec<MessageType> = vec![
+        MessageType::HelloRequest,
+        MessageType::HelloResponse
+    ];
+}
+
+pub fn msg_type_from_id(message_type_id: u32) -> Option<MessageType> {
+    MESSAGES_LOOKUP.with(|types| types.get(message_type_id as usize).map(|t| *t))
+}
+
+fn msg_id_from_type(message_type: MessageType) -> Option<u32> {
+    MESSAGES_LOOKUP.with(|types| types
+        .iter()
+        .enumerate()
+        .find(|(_, msg_type)| **msg_type == message_type)
+        .map(|(ind, _)| ind as u32)
+    )
+}
+
+pub async fn send_message<Msg, W>(writer: &mut W, msg_type: MessageType, message: Msg) -> Result<(), std::io::Error> 
     where Msg: prost::Message, W: AsyncWrite + std::marker::Unpin {
 
-    let mut encoded_data = Cursor::new(message.encode_to_vec());
-    writer.write_all_buf(&mut encoded_data).await?;
+    if let Some(id) = msg_id_from_type(msg_type) {
+        let mut cursor = Cursor::new(vec![]);
+        cursor.write(&u32::to_be_bytes(id)).await?;
+        cursor.write(&u32::to_be_bytes(message.encoded_len() as u32)).await?;
+        cursor.write_all(&mut message.encode_to_vec()).await?;
+
+        writer.write_all(&mut cursor.into_inner()).await?;
+    }
 
     Ok(())
 }

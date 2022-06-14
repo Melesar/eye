@@ -1,21 +1,14 @@
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
+use prost::Message;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::Sender;
 
 use crate::ServerConfig;
 use crate::{camera, networking};
+use networking::MessageType;
 
-thread_local! {
-    static MESSAGES_LOOKUP: Vec<MessageType> = vec![
-        MessageType::HelloRequest,
-        MessageType::HelloResponse
-    ];
-}
+use self::messages::HelloRequest;
 
 pub mod messages {
     include!(concat!(env!("OUT_DIR"), "/messages.rs"));
@@ -26,12 +19,6 @@ enum Event {
     Connected,
     Disconnected,
     MessageReceived(ReceivedMessage)
-}
-
-#[derive(Clone, Copy, Debug)]
-enum MessageType {
-    HelloRequest,
-    HelloResponse
 }
 
 enum ReadState {
@@ -49,14 +36,13 @@ struct ReceivedMessage {
 
 pub struct Server {
     config: ServerConfig,
-    current_ip: Ipv4Addr,
     client_connections: HashMap<u32, OwnedWriteHalf>
 }
 
 impl Server {
 
-    pub fn new(config: ServerConfig, current_ip: Ipv4Addr) -> Self {
-        Server { config, current_ip, client_connections: HashMap::new() }
+    pub fn new(config: ServerConfig) -> Self {
+        Server { config, client_connections: HashMap::new() }
     }
     
     pub async fn start(mut self) -> Result<(), std::io::Error> {
@@ -68,18 +54,11 @@ impl Server {
         loop {
             tokio::select! {
                 accept_result = listener.accept() => if let Ok((stream, _)) = accept_result {
-                    let (reader, mut writer) = stream.into_split();
-                    let config = self.config.clone();
-                    let sender = tx.clone();
-                    tokio::spawn(async move { handle_client_connection(reader, config, sender).await });
-
-                    let message = messages::HelloResponse { 
-                        stream_host: self.current_ip.clone().to_string(),
-                        stream_port: camera::CAMERA_PORT as i32 
-                    };
-                    networking::send_message(&mut writer, message).await?;
-
+                    let (reader, writer) = stream.into_split();
                     self.client_connections.insert(current_client_id, writer);
+                    
+                    let sender = tx.clone();
+                    tokio::spawn(async move { handle_client_connection(reader, sender, current_client_id).await });
                     current_client_id += 1;
                 },
 
@@ -88,7 +67,9 @@ impl Server {
                         println!("Client connected");
                         if currently_connected == 0 && !camera::is_active() {
                             println!("Enabling camera");
-                            camera::start();
+                            if let Err(e) = camera::start() {
+                                eprintln!("Failed to start camera: {}", e);
+                            };
                         } 
 
                         currently_connected += 1;
@@ -105,15 +86,39 @@ impl Server {
                     },
                     Some(Event::MessageReceived(message_data)) => {
                         println!("Received {:?} from {}", message_data.msg_type, message_data.sender_id);
-                    },
+                        match message_data.msg_type {
+                            MessageType::HelloRequest => {
+                                let sender_id = message_data.sender_id;
+                                let mut cursor = std::io::Cursor::new(message_data.payload);
+                                if let Ok(request) = HelloRequest::decode(&mut cursor) {
+                                    if let Some(connection) = self.client_connections.get_mut(&sender_id) {
+                                        on_hello_request(request, connection).await;
+                                    }
+                                }
+                            },
+                            MessageType::HelloResponse => todo!(),
+                        }
+                    }
                     _ => {}
                 }
             }
         }
     }
+
 }
 
-async fn handle_client_connection<R>(reader: R, config: ServerConfig, sender: Sender<Event>) -> Result<(), std::io::Error>
+
+async fn on_hello_request<W>(_request: HelloRequest, connection: &mut W) where W: AsyncWrite + std::marker::Unpin {
+    let message = messages::HelloResponse { 
+        stream_host: crate::get_current_ip_address().to_string(),
+        stream_port: camera::CAMERA_PORT as i32 
+    };
+    if let Err(e) = networking::send_message(connection, MessageType::HelloResponse, message).await {
+        eprintln!("Error sending a message {}", e);
+    };
+}
+
+async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id: u32) -> Result<(), std::io::Error>
     where R: AsyncRead + std::marker::Unpin  {
 
     let mut reader = tokio::io::BufReader::new(reader);
@@ -123,14 +128,17 @@ async fn handle_client_connection<R>(reader: R, config: ServerConfig, sender: Se
     let mut current_message_type = MessageType::HelloRequest;
     let mut message_length = 0;
 
+    sender.send(Event::Connected).await.unwrap_or_default();
+
     loop {
         match current_state {
             ReadState::MsgType => {
                 let bytes_read = reader.read(&mut num_buffer).await?;
-                if bytes_read < num_buffer.len() { continue; }
+                if disconnect_if_none_is_read(bytes_read, &sender).await { break; }
+                else if bytes_read < num_buffer.len() { continue; }
 
                 let message_type_index = u32::from_be_bytes(num_buffer);
-                match MESSAGES_LOOKUP.with(|l| l.get(message_type_index as usize).map(|t| *t)) {
+                match networking::msg_type_from_id(message_type_index as u32) {
                     Some(tt) => { current_message_type = tt },
                     None => { eprintln!("Unrecognized message type index {}", message_type_index); break; },
                 }
@@ -139,7 +147,8 @@ async fn handle_client_connection<R>(reader: R, config: ServerConfig, sender: Se
             },
             ReadState::Length => {
                 let bytes_read = reader.read(&mut num_buffer).await?;
-                if bytes_read < num_buffer.len() { continue; }
+                if disconnect_if_none_is_read(bytes_read, &sender).await { break; }
+                else if bytes_read < num_buffer.len() { continue; }
 
                 message_length = u32::from_be_bytes(num_buffer) as usize;
                 current_state = ReadState::Payload;
@@ -150,16 +159,26 @@ async fn handle_client_connection<R>(reader: R, config: ServerConfig, sender: Se
                 }
 
                 let bytes_read = reader.read(&mut buffer[0..message_length]).await?;
-                if bytes_read < buffer.len() { continue; }
+                if disconnect_if_none_is_read(bytes_read, &sender).await { break; }
+                else if bytes_read < buffer.len() { continue; }
 
                 sender.send(Event::MessageReceived(ReceivedMessage {
-                    sender_id: 1,
+                    sender_id: client_id,
                     msg_type: current_message_type,
                     payload: buffer[0..message_length].to_owned() 
                 }))
                 .await
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
             },
+        }
+
+        async fn disconnect_if_none_is_read(bytes_read: usize, sender: &Sender<Event>) -> bool {
+            if bytes_read == 0 {
+                sender.send(Event::Disconnected).await.unwrap_or_default();
+                return true;
+            }
+
+            false
         }
     }
 

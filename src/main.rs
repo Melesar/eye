@@ -22,13 +22,11 @@ async fn main() {
         return;
     }
     
-    let current_ip = get_current_ip_address();
-
     //TODO optionally: check for gpio availability
 
     //TODO read config from file. Randomize the code each startup
     let config = ServerConfig { display_name: "My Raspberry".into(), code: 483_921_341};
-    let server = Server::new(config, current_ip);
+    let server = Server::new(config);
     if let Err(e) = server.start().await {
         eprintln!("Server failed: {}", e);
     }
