@@ -2,7 +2,6 @@ mod networking;
 mod camera;
 mod server;
 
-use std::io::Result;
 use std::net::Ipv4Addr;
 use std::u128;
 
@@ -23,7 +22,7 @@ async fn main() {
         return;
     }
     
-    let current_ip = get_current_ip_address().expect("Failed to get current ip address");
+    let current_ip = get_current_ip_address();
 
     //TODO optionally: check for gpio availability
 
@@ -36,21 +35,23 @@ async fn main() {
 }
 
 
-fn get_current_ip_address() -> Result<Ipv4Addr> {
-    let err = || std::io::Error::new(std::io::ErrorKind::NotFound, "No network interfaces found");
-
+fn get_current_ip_address() -> Ipv4Addr {
     let interface = pnet::datalink::interfaces()
         .into_iter()
         .filter(|i| i.is_up() && !i.is_loopback() && !i.ips.is_empty())
         .take(1)
-        .next()
-        .ok_or_else(err)?;
+        .next();
 
-    interface.ips.first()
-        .and_then(|addr| match addr {
-            IpNetwork::V4(ipv4_addr) => Some(ipv4_addr.ip()),
-            _ => None,
-        })
-        .ok_or_else(err)
+    if let Some(i) = interface {
+        i.ips.first()
+            .and_then(|addr| match addr {
+                IpNetwork::V4(ipv4_addr) => Some(ipv4_addr.ip()),
+                _ => None,
+            })
+            .unwrap_or(Ipv4Addr::LOCALHOST)
+    } else {
+        Ipv4Addr::LOCALHOST
+    }
+
 }
 
