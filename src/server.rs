@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use prost::Message;
+use std::collections::HashMap;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::Sender;
@@ -9,6 +9,25 @@ use crate::{camera, networking};
 use networking::MessageType;
 
 use self::messages::HelloRequest;
+
+macro_rules! on_message {
+    ($t:expr, $s:expr, {$($p:ident => $f:ident),+}) => {
+        match $t.msg_type {
+            $(
+                MessageType::$p => {
+                    let sender_id = $t.sender_id;
+                    let mut cursor = std::io::Cursor::new($t.payload);
+                    if let Ok(request) = $p::decode(&mut cursor) {
+                        if let Some(connection) = $s.client_connections.get_mut(&sender_id) {
+                            $f(request, connection).await;
+                        }
+                    }
+                },
+            )+
+            _ => {}
+        }
+    };
+}
 
 pub mod messages {
     include!(concat!(env!("OUT_DIR"), "/messages.rs"));
@@ -86,18 +105,9 @@ impl Server {
                     },
                     Some(Event::MessageReceived(message_data)) => {
                         println!("Received {:?} from {}", message_data.msg_type, message_data.sender_id);
-                        match message_data.msg_type {
-                            MessageType::HelloRequest => {
-                                let sender_id = message_data.sender_id;
-                                let mut cursor = std::io::Cursor::new(message_data.payload);
-                                if let Ok(request) = HelloRequest::decode(&mut cursor) {
-                                    if let Some(connection) = self.client_connections.get_mut(&sender_id) {
-                                        on_hello_request(request, connection).await;
-                                    }
-                                }
-                            },
-                            MessageType::HelloResponse => todo!(),
-                        }
+                        on_message!(message_data, self, {
+                            HelloRequest => on_hello_request
+                        });
                     }
                     _ => {}
                 }
@@ -113,9 +123,7 @@ async fn on_hello_request<W>(_request: HelloRequest, connection: &mut W) where W
         stream_host: crate::get_current_ip_address().to_string(),
         stream_port: camera::CAMERA_PORT as i32 
     };
-    if let Err(e) = networking::send_message(connection, MessageType::HelloResponse, message).await {
-        eprintln!("Error sending a message {}", e);
-    };
+    networking::send_message(connection, MessageType::HelloResponse, message).await.unwrap_or_default();
 }
 
 async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id: u32) -> Result<(), std::io::Error>
