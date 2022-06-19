@@ -15,12 +15,13 @@ pub fn is_available() -> bool {
 
 #[cfg(feature = "camera")]
 pub fn is_active() -> bool {
-    false
+    true
 }
 
 #[cfg(feature = "camera")]
 pub fn start() -> Result<()> {
     Command::new("motion")
+        .arg("-b")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -29,7 +30,9 @@ pub fn start() -> Result<()> {
 
 #[cfg(feature = "camera")]
 pub fn stop() {
-
+    Command::new("pkill")
+        .arg("motion")
+        .spawn();
 }
 
 #[cfg(not(feature = "camera"))]
