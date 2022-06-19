@@ -145,7 +145,8 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
                 if disconnect_if_none_is_read(bytes_read, &sender).await { break; }
                 else if bytes_read < num_buffer.len() { continue; }
 
-                let message_type_index = u32::from_be_bytes(num_buffer);
+                let message_type_index = u32::from_le_bytes(num_buffer);
+
                 match networking::msg_type_from_id(message_type_index as u32) {
                     Some(tt) => { current_message_type = tt },
                     None => { eprintln!("Unrecognized message type index {}", message_type_index); break; },
@@ -158,10 +159,11 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
                 if disconnect_if_none_is_read(bytes_read, &sender).await { break; }
                 else if bytes_read < num_buffer.len() { continue; }
 
-                message_length = u32::from_be_bytes(num_buffer) as usize;
+                message_length = u32::from_le_bytes(num_buffer) as usize;
                 current_state = ReadState::Payload;
             },
             ReadState::Payload => {
+                //TODO handle empty messages with 0 bytes payload
                 if buffer.len() < message_length {
                     buffer.resize(message_length, 0);
                 }
@@ -169,6 +171,7 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
                 let bytes_read = reader.read(&mut buffer[0..message_length]).await?;
                 if disconnect_if_none_is_read(bytes_read, &sender).await { break; }
                 else if bytes_read < buffer.len() { continue; }
+
 
                 sender.send(Event::MessageReceived(ReceivedMessage {
                     sender_id: client_id,
