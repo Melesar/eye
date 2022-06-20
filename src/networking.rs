@@ -20,8 +20,8 @@ pub async fn send_message<Msg, W>(writer: &mut W, msg_type: MessageType, message
 
     if let Some(id) = msg_id_from_type(msg_type) {
         let mut cursor = Cursor::new(vec![]);
-        cursor.write(&u32::to_be_bytes(id)).await?;
-        cursor.write(&u32::to_be_bytes(message.encoded_len() as u32)).await?;
+        cursor.write(&u32::to_le_bytes(id)).await?;
+        cursor.write(&u32::to_le_bytes(message.encoded_len() as u32)).await?;
         cursor.write_all(&mut message.encode_to_vec()).await?;
 
         writer.write_all(&mut cursor.into_inner()).await?;
