@@ -10,3 +10,4 @@ server:
 deploy:
 	cargo build --bin server --target $(TARGET) --features camera
 	scp target/$(TARGET)/debug/server $(PI_HOST):$(PROGRAM)
+	scp -r config $(PI_HOST):.config/$(PROGRAM)
