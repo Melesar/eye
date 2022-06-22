@@ -11,12 +11,10 @@ pnet = "*"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"]}
 prost = "0.10"
 bytes = "1.1.0"
+xdg = "2.4.1"
 
 [build-dependencies]
 prost-build = { version = "0.10" }
-
-[features]
-camera = []
 
 [[bin]]
 name = "server"

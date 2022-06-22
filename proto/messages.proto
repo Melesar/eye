@@ -10,4 +10,3 @@ message HelloResponse {
 	string streamHost = 1;
 	int32 streamPort = 2;
 }
-

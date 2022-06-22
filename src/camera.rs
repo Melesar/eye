@@ -1,72 +1,24 @@
-use std::path::Path;
-use std::process::{Command, Stdio};
+mod motion_camera;
+mod fake_camera;
+
 use std::io::Result;
 
-pub const CAMERA_PORT : u16 = 8081;
+use motion_camera::MotionCamera;
+use fake_camera::FakeCamera;
 
-#[cfg(feature = "camera")]
-pub fn is_available() -> bool {
-    Command::new("motion")
-        .arg("-h")
-        .stdout(Stdio::null())
-        .status()
-        .is_ok()
+use crate::fs::Fs;
+
+pub trait Camera {
+    fn is_active(&self) -> bool;
+    fn start(&self) -> Result<()>;
+    fn stop(&self) -> Result<()>;
+    fn port(&self) -> u16;
 }
 
-#[cfg(feature = "camera")]
-pub fn is_active() -> bool {
-    if let Ok(home_path) = std::env::var("HOME") {
-        return std::path::Path::new(&home_path).join(".motion").join("motion.pid").exists()
+pub fn init_camera(fs: Fs) -> Box<dyn Camera> {
+    if MotionCamera::is_available() {
+        Box::new(MotionCamera::new(fs))
+    } else {
+        Box::new(FakeCamera{})
     }
-
-    false
-}
-
-#[cfg(feature = "camera")]
-pub fn start() -> Result<()> {
-    Command::new("motion")
-        .arg("-b")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map(|_| ())
-}
-
-#[cfg(feature = "camera")]
-pub fn stop() {
-    Command::new("pkill")
-        .arg("motion")
-        .spawn();
-}
-
-#[cfg(not(feature = "camera"))]
-pub fn is_available() -> bool {
-    true
-}
-
-#[cfg(not(feature = "camera"))]
-pub fn is_active() -> bool {
-    get_lock_path().exists()
-}
-
-#[cfg(not(feature = "camera"))]
-pub fn start() -> Result<()> {
-    let path = get_lock_path();
-    if !path.exists() {
-        std::fs::File::create(path)?;
-    }
-
-    Ok(())
-}
-
-#[cfg(not(feature = "camera"))]
-pub fn stop() {
-    let path = get_lock_path();
-    if path.exists() {
-        std::fs::remove_file(path);
-    }
-}
-
-pub fn get_lock_path() -> &'static Path {
-    Path::new("camera_active")
 }

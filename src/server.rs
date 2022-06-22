@@ -1,10 +1,9 @@
 use prost::Message;
 use std::collections::HashMap;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::Sender;
 
-use crate::ServerConfig;
 use crate::{camera, networking};
 use networking::MessageType;
 
@@ -18,9 +17,7 @@ macro_rules! on_message {
                     let sender_id = $t.sender_id;
                     let mut cursor = std::io::Cursor::new($t.payload);
                     if let Ok(request) = $p::decode(&mut cursor) {
-                        if let Some(connection) = $s.client_connections.get_mut(&sender_id) {
-                            $f(request, connection).await;
-                        }
+                        $f(sender_id, request, $s).await;
                     }
                 },
             )+
@@ -54,13 +51,14 @@ struct ReceivedMessage {
 }
 
 pub struct Server {
+    camera: Box<dyn camera::Camera>,
     client_connections: HashMap<u32, OwnedWriteHalf>
 }
 
 impl Server {
 
-    pub fn new() -> Self {
-        Server { client_connections: HashMap::new() }
+    pub fn new(camera: Box<dyn camera::Camera>) -> Self {
+        Server { camera, client_connections: HashMap::new() }
     }
     
     pub async fn start(mut self) -> Result<(), std::io::Error> {
@@ -83,9 +81,9 @@ impl Server {
                 receive_result = rx.recv() => match receive_result {
                     Some(Event::Connected) => {
                         println!("Client connected");
-                        if currently_connected == 0 && !camera::is_active() {
+                        if currently_connected == 0 && !self.camera.is_active() {
                             println!("Enabling camera");
-                            if let Err(e) = camera::start() {
+                            if let Err(e) = self.camera.start() {
                                 eprintln!("Failed to start camera: {}", e);
                             };
                         } 
@@ -94,9 +92,11 @@ impl Server {
                     },
                     Some(Event::Disconnected) => {
                         println!("Client disconnected");
-                        if currently_connected == 1 && camera::is_active() {
+                        if currently_connected == 1 && self.camera.is_active() {
                             println!("Disabling camera");
-                            camera::stop();
+                            if let Err(e) = self.camera.stop() {
+                                eprintln!("Failed to stop camera: {}", e);
+                            }
                             currently_connected = 0;
                         } else if currently_connected != 0 {
                             currently_connected -= 1;
@@ -104,7 +104,7 @@ impl Server {
                     },
                     Some(Event::MessageReceived(message_data)) => {
                         println!("Received {:?} from {}", message_data.msg_type, message_data.sender_id);
-                        on_message!(message_data, self, {
+                        on_message!(message_data, &mut self, {
                             HelloRequest => on_hello_request
                         });
                     }
@@ -117,12 +117,15 @@ impl Server {
 }
 
 
-async fn on_hello_request<W>(_request: HelloRequest, connection: &mut W) where W: AsyncWrite + std::marker::Unpin {
-    let message = messages::HelloResponse { 
-        stream_host: crate::get_current_ip_address().to_string(),
-        stream_port: camera::CAMERA_PORT as i32 
-    };
-    networking::send_message(connection, MessageType::HelloResponse, message).await.unwrap_or_default();
+async fn on_hello_request(sender_id: u32, _request: HelloRequest, server: &mut Server) {
+    if let Some(connection) = server.client_connections.get_mut(&sender_id) {
+        let camera_port = server.camera.port();
+        let message = messages::HelloResponse { 
+            stream_host: crate::get_current_ip_address().to_string(),
+            stream_port: camera_port as i32,
+        };
+        networking::send_message(connection, MessageType::HelloResponse, message).await.unwrap_or_default();
+    }
 }
 
 async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id: u32) -> Result<(), std::io::Error>

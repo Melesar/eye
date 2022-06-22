@@ -1,6 +1,7 @@
 mod networking;
 mod camera;
 mod server;
+mod fs;
 
 use std::net::Ipv4Addr;
 
@@ -10,13 +11,10 @@ use server::Server;
 
 #[tokio::main]
 async fn main() {
+    let fs = fs::Fs::new().expect("Failed to initalize filesystem helpers");
+    let camera = camera::init_camera(fs);
 
-    if !camera::is_available() {
-        eprintln!("Camera is not available. Shutting down");
-        return;
-    }
-    
-    let server = Server::new();
+    let server = Server::new(camera);
     if let Err(e) = server.start().await {
         eprintln!("Server failed: {}", e);
     }
