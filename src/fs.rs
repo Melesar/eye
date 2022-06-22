@@ -8,7 +8,7 @@ pub struct Fs {
 
 impl Fs {
     pub fn new() -> Result<Self, BaseDirectoriesError> {
-        let xdg = BaseDirectories::new()?;
+        let xdg = BaseDirectories::with_prefix("eye")?;
         Ok(Fs { xdg })
     }
 

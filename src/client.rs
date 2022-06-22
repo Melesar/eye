@@ -9,13 +9,13 @@ pub mod messages {
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    let sender = "0.0.0.0:6688".parse().unwrap();
+    let sender = "192.168.1.251:6688".parse().unwrap();
     let mut tcp_stream = TcpSocket::new_v4()?.connect(sender).await?;
-    tcp_stream.write_u32(0).await?;
+    tcp_stream.write_u32_le(0).await?;
 
     let mut message = HelloRequest::default();
     message.code = 123;
-    tcp_stream.write_u32(message.encoded_len() as u32).await?;
+    tcp_stream.write_u32_le(message.encoded_len() as u32).await?;
 
     let mut buffer = Vec::new();
     match message.encode(&mut buffer) {

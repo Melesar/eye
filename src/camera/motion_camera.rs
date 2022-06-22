@@ -5,7 +5,6 @@ use crate::fs;
 
 const DEFAULT_CAMERA_PORT : u16 = 8081;
 
-
 pub struct MotionCamera {
     fs: fs::Fs,
 }
@@ -64,12 +63,21 @@ impl Camera for MotionCamera {
         let pid = std::fs::read_to_string(pid_file)?;
 
         Command::new("kill")
-            .arg(pid)
+            .arg(pid.trim())
             .spawn()
             .map(|_| ())
     }
 
     fn port(&self) -> u16 {
         self.get_port().unwrap_or(DEFAULT_CAMERA_PORT)
+    }
+}
+
+impl Drop for MotionCamera {
+    fn drop(&mut self) {
+        self.stop();
+        if let Ok(path) = self.fs.camera_pid_file() {
+            std::fs::remove_file(path);
+        }
     }
 }
