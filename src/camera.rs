@@ -15,7 +15,11 @@ pub fn is_available() -> bool {
 
 #[cfg(feature = "camera")]
 pub fn is_active() -> bool {
-    true
+    if let Ok(home_path) = std::env::var("HOME") {
+        return std::path::Path::new(&home_path).join(".motion").join("motion.pid").exists()
+    }
+
+    false
 }
 
 #[cfg(feature = "camera")]
