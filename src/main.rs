@@ -3,16 +3,10 @@ mod camera;
 mod server;
 
 use std::net::Ipv4Addr;
-use std::u128;
 
 use pnet::ipnetwork::IpNetwork;
 use server::Server;
 
-#[derive(Clone)]
-pub struct ServerConfig {
-   pub display_name: String,
-   pub code: u128,
-}
 
 #[tokio::main]
 async fn main() {
@@ -22,8 +16,7 @@ async fn main() {
         return;
     }
     
-    let config = ServerConfig { display_name: "My Raspberry".into(), code: 483_921_341};
-    let server = Server::new(config);
+    let server = Server::new();
     if let Err(e) = server.start().await {
         eprintln!("Server failed: {}", e);
     }

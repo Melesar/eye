@@ -54,14 +54,13 @@ struct ReceivedMessage {
 }
 
 pub struct Server {
-    config: ServerConfig,
     client_connections: HashMap<u32, OwnedWriteHalf>
 }
 
 impl Server {
 
-    pub fn new(config: ServerConfig) -> Self {
-        Server { config, client_connections: HashMap::new() }
+    pub fn new() -> Self {
+        Server { client_connections: HashMap::new() }
     }
     
     pub async fn start(mut self) -> Result<(), std::io::Error> {
