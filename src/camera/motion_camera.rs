@@ -1,17 +1,21 @@
 use std::{process::{Command, Stdio}, io::BufRead};
+use std::io::{Result, Error, ErrorKind};
 
 use super::Camera;
 use crate::fs;
 
-const DEFAULT_CAMERA_PORT : u16 = 8081;
-
 pub struct MotionCamera {
     fs: fs::Fs,
+    port: u16,
 }
 
 impl MotionCamera {
-    pub fn new (fs: fs::Fs) -> Self {
-        MotionCamera { fs }
+    pub fn new (fs: fs::Fs) -> Result<Self> {
+        let port = Self::get_port(&fs);
+        port.and_then(|p| {
+            println!("Camera port {}", p);
+            Ok(MotionCamera {fs, port: p})
+        })
     }
 
     pub fn is_available() -> bool {
@@ -22,20 +26,22 @@ impl MotionCamera {
             .is_ok()
     }
 
-    fn get_port(&self) -> Option<u16> {
-        let file_path = self.fs.camera_config_file().ok()?;
-        let file = std::fs::File::open(file_path).ok()?;
+    fn get_port(fs: &fs::Fs) -> Result<u16> {
+        let file_path = fs.camera_config_file()?;
+        let file = std::fs::File::open(file_path)?;
         let reader = std::io::BufReader::new(file);
         for l in reader.lines() {
-            let line = l.ok()?;
+            let line = l?;
             if line.starts_with("stream_port")  {
-                return line.split_whitespace()
-                .nth(1)
-                .map(|s| s.parse::<u16>().unwrap_or(DEFAULT_CAMERA_PORT));
+                if let Some(port_string) = line.split_whitespace().nth(1) {
+                    return port_string.parse::<u16>().map_err(|e|
+                        Error::new(ErrorKind::InvalidData, format!("Failed to parse port number from the config file.\n{}", e))
+                    )
+                }
             }
         }
 
-        None
+        Err(Error::new(ErrorKind::NotFound, "Failed to find camera port setting in config file"))
     }
 }
 
@@ -49,7 +55,6 @@ impl Camera for MotionCamera {
         let pid_file = self.fs.camera_pid_file()?;
 
         Command::new("motion")
-            .arg("-b")
             .arg("-c").arg(config_file.into_os_string())
             .arg("-p").arg(pid_file.into_os_string())
             .stdout(Stdio::null())
@@ -63,21 +68,19 @@ impl Camera for MotionCamera {
         let pid = std::fs::read_to_string(pid_file)?;
 
         Command::new("kill")
+            .arg("-INT")
             .arg(pid.trim())
             .spawn()
             .map(|_| ())
     }
 
     fn port(&self) -> u16 {
-        self.get_port().unwrap_or(DEFAULT_CAMERA_PORT)
+        self.port
     }
 }
 
 impl Drop for MotionCamera {
     fn drop(&mut self) {
         self.stop();
-        if let Ok(path) = self.fs.camera_pid_file() {
-            std::fs::remove_file(path);
-        }
     }
 }

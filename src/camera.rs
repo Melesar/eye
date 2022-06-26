@@ -15,10 +15,11 @@ pub trait Camera {
     fn port(&self) -> u16;
 }
 
-pub fn init_camera(fs: Fs) -> Box<dyn Camera> {
+pub fn init_camera(fs: Fs) -> Result<Box<dyn Camera>> {
     if MotionCamera::is_available() {
-        Box::new(MotionCamera::new(fs))
+        let camera = MotionCamera::new(fs)?;
+        Ok(Box::new(camera))
     } else {
-        Box::new(FakeCamera{})
+        Ok(Box::new(FakeCamera{}))
     }
 }

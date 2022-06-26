@@ -1,6 +1,9 @@
-use messages::HelloRequest;
+use std::io::SeekFrom;
+use std::io::Seek;
+use messages::{HelloRequest, HelloResponse};
 use prost::Message;
 use tokio::{net::TcpSocket, io::{AsyncWriteExt, AsyncReadExt}};
+use std::io::Cursor;
 
 pub mod messages {
     include!(concat!(env!("OUT_DIR"), "/messages.rs"));
@@ -29,6 +32,15 @@ async fn main() -> Result<(), std::io::Error> {
     let mut receive_buffer = [0_u8; 100];
     let bytes_read = tcp_stream.read(&mut receive_buffer).await?;
     println!("Received {} bytes back from the server", bytes_read);
+
+    let mut cursor = Cursor::new(receive_buffer);
+    cursor.seek(SeekFrom::Current(8));
+    match HelloResponse::decode(cursor) {
+        Ok(response) => println!("Response: {}:{}", response.stream_host, response.stream_port),
+        Err(e) => eprintln!("Failed to decode response: {}", e),
+    }
+
+    std::thread::sleep(std::time::Duration::from_secs(5));
 
     Ok(())
 }

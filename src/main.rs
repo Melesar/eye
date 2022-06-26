@@ -12,7 +12,7 @@ use server::Server;
 #[tokio::main]
 async fn main() {
     let fs = fs::Fs::new().expect("Failed to initalize filesystem helpers");
-    let camera = camera::init_camera(fs);
+    let camera = camera::init_camera(fs).expect("Failed to initialize camera");
 
     let server = Server::new(camera);
     if let Err(e) = server.start().await {
