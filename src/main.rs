@@ -14,8 +14,9 @@ use server::Server;
 async fn main() {
     let fs = fs::Fs::new().expect("Failed to initalize filesystem helpers");
     let camera = camera::init_camera(fs).expect("Failed to initialize camera");
+    let servo = servo::init();
 
-    let server = Server::new(camera);
+    let server = Server::new(camera, servo);
     if let Err(e) = server.start().await {
         eprintln!("Server failed: {}", e);
     }

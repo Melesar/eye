@@ -4,7 +4,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::Sender;
 
-use crate::{camera, networking};
+use crate::{camera, servo, networking};
 use networking::MessageType;
 
 use self::messages::HelloRequest;
@@ -52,13 +52,14 @@ struct ReceivedMessage {
 
 pub struct Server {
     camera: Box<dyn camera::Camera>,
+    servo: Box<dyn servo::Servo>,
     client_connections: HashMap<u32, OwnedWriteHalf>
 }
 
 impl Server {
 
-    pub fn new(camera: Box<dyn camera::Camera>) -> Self {
-        Server { camera, client_connections: HashMap::new() }
+    pub fn new(camera: Box<dyn camera::Camera>, servo: Box<dyn servo::Servo>) -> Self {
+        Server { camera, servo, client_connections: HashMap::new() }
     }
     
     pub async fn start(mut self) -> Result<(), std::io::Error> {
@@ -113,9 +114,7 @@ impl Server {
             }
         }
     }
-
 }
-
 
 async fn on_hello_request(sender_id: u32, _request: HelloRequest, server: &mut Server) {
     if let Some(connection) = server.client_connections.get_mut(&sender_id) {
