@@ -2,6 +2,7 @@ mod networking;
 mod camera;
 mod server;
 mod fs;
+mod servo;
 
 use std::net::Ipv4Addr;
 
