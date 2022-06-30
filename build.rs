@@ -17,9 +17,7 @@ impl bindgen::callbacks::ParseCallbacks for IgnoreMacros {
 }
 
 fn main() -> Result<()> {
-    compile_protos()?;
-    compile_libservo()?;
-    Ok(())
+    compile_protos().and(compile_libservo())
 }
 
 fn compile_protos() -> Result<()> {

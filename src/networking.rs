@@ -5,13 +5,15 @@ use std::io::Cursor;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MessageType {
     HelloRequest,
-    HelloResponse
+    HelloResponse,
+    ServoRotateRequest
 }
 
 thread_local! {
     static MESSAGES_LOOKUP: Vec<MessageType> = vec![
         MessageType::HelloRequest,
-        MessageType::HelloResponse
+        MessageType::HelloResponse,
+        MessageType::ServoRotateRequest
     ];
 }
 

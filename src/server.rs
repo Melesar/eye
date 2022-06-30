@@ -7,7 +7,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{camera, servo, networking};
 use networking::MessageType;
 
-use self::messages::HelloRequest;
+use self::messages::{HelloRequest, ServoRotateRequest};
 
 macro_rules! on_message {
     ($t:expr, $s:expr, {$($p:ident => $f:ident),+}) => {
@@ -106,7 +106,8 @@ impl Server {
                     Some(Event::MessageReceived(message_data)) => {
                         println!("Received {:?} from {}", message_data.msg_type, message_data.sender_id);
                         on_message!(message_data, &mut self, {
-                            HelloRequest => on_hello_request
+                            HelloRequest => on_hello_request,
+                            ServoRotateRequest => on_servo_rotate_request
                         });
                     }
                     _ => {}
@@ -125,6 +126,10 @@ async fn on_hello_request(sender_id: u32, _request: HelloRequest, server: &mut S
         };
         networking::send_message(connection, MessageType::HelloResponse, message).await.unwrap_or_default();
     }
+}
+
+async fn on_servo_rotate_request(_sender_id: u32, request: ServoRotateRequest, server: &mut Server) {
+    server.servo.rotate(request.dx as i8, request.dy as i8);
 }
 
 async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id: u32) -> Result<(), std::io::Error>
