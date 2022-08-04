@@ -33,13 +33,18 @@ fn compile_libservo() -> Result<()> {
         .iter()
         .map(|s| format!("{}/{}", servo_dir, s))
         .collect::<Vec<String>>();
+
     cc::Build::new()
         .files(files)
         .include(servo_dir)
+        .warnings(false)
         .try_compile("servo")
         .map_err(|e| Error::new(ErrorKind::Other, e))?;
 
-    let ignored_macros = vec!["FP_NAN".into(), "FP_NORMAL".into(), "FP_INFINITE".into(), "FP_SUBNORMAL".into(), "FP_ZERO".into(), "IPPORT_RESERVED".into()].into_iter().collect();
+    let ignored_macros = vec!["FP_NAN", "FP_NORMAL", "FP_INFINITE", "FP_SUBNORMAL", "FP_ZERO", "IPPORT_RESERVED"]
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
 
     let bindings = bindgen::builder()
         .header(format!("{}/PCA9685_servo_driver.h", servo_dir))
