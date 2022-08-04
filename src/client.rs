@@ -1,6 +1,6 @@
 use std::io::SeekFrom;
 use std::io::Seek;
-use messages::{HelloRequest, HelloResponse};
+use messages::{HelloRequest, HelloResponse, ServoRotateRequest};
 use prost::Message;
 use tokio::{net::TcpSocket, io::{AsyncWriteExt, AsyncReadExt}};
 use std::io::Cursor;
@@ -40,7 +40,24 @@ async fn main() -> Result<(), std::io::Error> {
         Err(e) => eprintln!("Failed to decode response: {}", e),
     }
 
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    let mut rotate_request = ServoRotateRequest::default();
+    rotate_request.dx = 1;
+    rotate_request.dy = 0;
+    buffer.clear();
+    match rotate_request.encode(&mut buffer) {
+        Ok(_) => {
+            for i in 0..3 {
+                println!("Rotating {}...", i + 1);
+                tcp_stream.write_all(&mut buffer).await?;
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+        },
+        
+        Err(e) => eprintln!("Failed to encode rotate message {}", e),
+    }
+
 
     Ok(())
 }
