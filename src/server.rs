@@ -52,13 +52,13 @@ struct ReceivedMessage {
 
 pub struct Server {
     camera: Box<dyn camera::Camera>,
-    servo: Box<dyn servo::Servo>,
+    servo: Option<Box<dyn servo::Servo>>,
     client_connections: HashMap<u32, OwnedWriteHalf>
 }
 
 impl Server {
 
-    pub fn new(camera: Box<dyn camera::Camera>, servo: Box<dyn servo::Servo>) -> Self {
+    pub fn new(camera: Box<dyn camera::Camera>, servo: Option<Box<dyn servo::Servo>>) -> Self {
         Server { camera, servo, client_connections: HashMap::new() }
     }
     
@@ -129,7 +129,9 @@ async fn on_hello_request(sender_id: u32, _request: HelloRequest, server: &mut S
 }
 
 async fn on_servo_rotate_request(_sender_id: u32, request: ServoRotateRequest, server: &mut Server) {
-    server.servo.rotate(request.dx as i8, request.dy as i8);
+    if let Some(s) = server.servo.as_mut() {
+        s.rotate(request.dx as i8, request.dy as i8);
+    }
 }
 
 async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id: u32) -> Result<(), std::io::Error>

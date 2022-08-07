@@ -18,7 +18,8 @@ thread_local! {
 }
 
 pub async fn send_message<Msg, W>(writer: &mut W, msg_type: MessageType, message: Msg) -> Result<(), std::io::Error> 
-    where Msg: prost::Message, W: AsyncWrite + std::marker::Unpin {
+    where Msg: prost::Message,
+          W: AsyncWrite + std::marker::Unpin {
 
     if let Some(id) = msg_id_from_type(msg_type) {
         let mut cursor = Cursor::new(vec![]);

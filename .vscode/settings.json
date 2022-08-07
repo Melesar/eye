@@ -1,0 +1,4 @@
+ {
+   //"rust.all_features": true,
+  "rust.features": ["servo"]
+ }

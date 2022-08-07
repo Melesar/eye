@@ -1,41 +1,38 @@
-mod lib {
-    include!(concat!(env!("OUT_DIR"), "/servo.rs"));
+use std::fmt::Display;
+
+#[cfg(feature = "servo")]
+mod pca_servo;
+
+#[cfg(feature = "servo")]
+use pca_servo::Pca9685Servo;
+
+#[derive(Debug)]
+pub enum Error {
+    ServoNotEnabled,
+    DeviceNotAvailable
 }
 
 pub trait Servo {
-    fn rotate(&self, dx: i8, dy: i8);
+    fn rotate(&mut self, dx: i8, dy: i8);
 }
 
-pub fn init() -> Box<dyn Servo> {
-    Box::new(PcaServo::new())
+#[cfg(feature = "servo")]
+pub fn init() -> Result<Box<dyn Servo>, Error> {
+    let servo = Pca9685Servo::new()?;
+    Ok(Box::new(servo))
+}  
+
+#[cfg(not(feature = "servo"))]
+pub fn init() -> Result<Box<dyn Servo>, Error> {
+    Err(Error::ServoNotEnabled)
 }
 
-pub struct PcaServo;
-
-impl PcaServo {
-    pub fn new() -> Self {
-        unsafe {
-            lib::PCA9685_init(lib::I2C_ADDR as u8);
-            lib::PCA9685_setPWMFreq(60_f32);  // Analog servos run at ~60 Hz updates
-        }
-        PcaServo{}
+impl Display for Error {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        let message = match self {
+            Error::ServoNotEnabled => "Servo feature is not enabled",
+            Error::DeviceNotAvailable => "Failed to open servo control device"
+        };
+        write!(formatter, "{}", message)
     }
 }
-
-impl Servo for PcaServo {
-
-    fn rotate(&self, dx: i8, dy: i8) { 
-        if dx >= 0 {
-            unsafe { lib::ServoDegreeIncrease(lib::SERVO_DOWN_CH as u8, dx as u8); }
-        } else if dx < 0 {
-            unsafe { lib::ServoDegreeDecrease(lib::SERVO_DOWN_CH as u8, (-dx) as u8); }
-        } else if dy >= 0 {
-            unsafe { lib::ServoDegreeIncrease(lib::SERVO_UP_CH as u8, dy as u8); }
-        } else {
-            unsafe { lib::ServoDegreeDecrease(lib::SERVO_UP_CH as u8, (-dy) as u8); }
-        }
-        
-    }
-}
-
-
