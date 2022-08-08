@@ -15,7 +15,10 @@ async fn main() {
     let fs = fs::Fs::new().expect("Failed to initalize filesystem helpers");
     let camera = camera::init_camera(fs).expect("Failed to initialize camera");
     let servo = match servo::init() {
-        Ok(s) => Some(s),
+        Ok(s) => {
+            println!("Servo initialized successfully");
+            Some(s)
+        },
         Err(e) => {
             eprintln!("Failed to initialize servo");
             eprintln!("{}", e);

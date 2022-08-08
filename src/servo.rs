@@ -9,7 +9,8 @@ use pca_servo::Pca9685Servo;
 #[derive(Debug)]
 pub enum Error {
     ServoNotEnabled,
-    DeviceNotAvailable
+    DeviceNotAvailable,
+    CommunicationFailure
 }
 
 pub trait Servo {
@@ -31,7 +32,8 @@ impl Display for Error {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         let message = match self {
             Error::ServoNotEnabled => "Servo feature is not enabled",
-            Error::DeviceNotAvailable => "Failed to open servo control device"
+            Error::DeviceNotAvailable => "Failed to open servo control device",
+            Error::CommunicationFailure => "Error during communication with the servo device"
         };
         write!(formatter, "{}", message)
     }

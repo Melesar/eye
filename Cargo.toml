@@ -6,21 +6,19 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-gpio = "*"
 pnet = "*"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"]}
-prost = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time"]}
+prost = "0.11"
 bytes = "1.1.0"
 xdg = "2.4.1"
 i2c-linux = {version = "0.1.2", optional = true}
+libmath = "0.2.1"
 
 [features]
 servo = ["dep:i2c-linux"]
 
 [build-dependencies]
-prost-build = { version = "0.10" }
-cc = "1.0"
-bindgen = "0.60"
+prost-build = { version = "0.11.1" }
 
 [[bin]]
 name = "server"
