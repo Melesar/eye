@@ -1,5 +1,4 @@
 use super::{Servo, Error};
-use tokio::{self, sync::mpsc};
 
 type I2c = i2c_linux::I2c<std::fs::File>;
 
@@ -16,19 +15,36 @@ const SERVO_UP_CHANNEL : u8 = 0_u8;
 const SERVO_DOWN_CHANNEL : u8 = 1_u8;
 const SERVO_MAX_ANGLE : u8 = 180_u8;
 
-struct ServoControl {
-    pub x: i8,
-    pub y: i8,
-}
-
 pub struct Pca9685Servo {
-    sender: mpsc::Sender<ServoControl>
+    i2c_bus: I2c,
+    up_degree: u8,
+    down_degree: u8,
 }
 
 impl Servo for Pca9685Servo {
     fn rotate(&mut self, dx: i8, dy: i8) {
-        let sender = self.sender.clone();
-        tokio::spawn(async move { sender.send(ServoControl{x: dx, y: dy}).await });
+        self.down_degree = update_degree(self.down_degree, dx);
+        self.up_degree = update_degree(self.up_degree, dy);
+
+        println!("Up: {}, down: {}", self.up_degree, self.down_degree);
+
+        if let Err(e) = set_servo_degree(&mut self.i2c_bus, self.up_degree, self.down_degree) {
+            eprintln!("Failed to rotate servo: {}", e);
+        }
+
+        fn update_degree(degree: u8, update: i8) -> u8 {
+            if update < 0 && update.abs() as u8 > degree {
+                0
+            } else if update > 0 && update as u8 > SERVO_MAX_ANGLE - degree {
+                SERVO_MAX_ANGLE
+            } else if update <= 0 {
+                degree + update.abs() as u8
+            } else if update > 0 {
+                degree + update as u8
+            } else {
+                degree
+            }
+        }
     }
 }
 
@@ -38,75 +54,37 @@ impl Pca9685Servo {
         let result = i2c_bus.smbus_set_slave_address(I2C_ADDRESS, false);
         println!("Setting slave address: {:?}", result);
         result.device_unavailable()?;
+             
+        let reset_result  = reset(&mut i2c_bus);
+        println!("Reset: {:?}", reset_result);
 
-        let (sender, receiver) = mpsc::channel(15);
+        reset_result.communication_failure()?;
 
-        tokio::spawn(async move {
-             if let Err(e) = run_servo(i2c_bus, receiver).await {
-                eprintln!("Servo failed: {}", e);
-             } 
-        });
+        let frequency_result = set_pwm_frequency(&mut i2c_bus, DEFAULT_PWM_FREQUENCY);
+        println!("Frequency {:?}", frequency_result);
 
+        frequency_result.communication_failure()?;
 
-        Ok(Pca9685Servo{ sender })
+        let up_degree : u8 = 90;
+        let down_degree : u8 = 90;
+        let degree_result = set_servo_degree(&mut i2c_bus, up_degree, down_degree);
+        println!("Degree: {:?}", degree_result);
+
+        degree_result.communication_failure()?;
+
+        Ok(Pca9685Servo{i2c_bus, up_degree, down_degree})
     }
 }
 
-async fn run_servo(mut i2c_bus: I2c, mut receiver: mpsc::Receiver<ServoControl>) -> Result<(), Error> {
-    let reset_result  = reset(&mut i2c_bus).await;
-    println!("Reset: {:?}", reset_result);
-
-    reset_result.communication_failure()?;
-
-    let frequency_result = set_pwm_frequency(&mut i2c_bus, DEFAULT_PWM_FREQUENCY).await;
-    println!("Frequency {:?}", frequency_result);
-
-    frequency_result.communication_failure()?;
-
-    let mut up_degree : u8 = 90;
-    let mut down_degree : u8 = 90;
-    let degree_result = set_servo_degree(&mut i2c_bus, up_degree, down_degree);
-    println!("Degree: {:?}", degree_result);
-
-    degree_result.communication_failure()?;
-
-    while let Some(control) = receiver.recv().await {
-        down_degree = update_degree(down_degree, control.x);
-        up_degree = update_degree(up_degree, control.y);
-
-        println!("Up: {}, down: {}", up_degree, down_degree);
-
-        set_servo_degree(&mut i2c_bus, up_degree, down_degree).communication_failure()?;
-    }
-
-    println!("Servo shutting down");
-
-    fn update_degree(degree: u8, update: i8) -> u8 {
-        if update < 0 && update.abs() as u8 > degree {
-            0
-        } else if update > 0 && update as u8 > SERVO_MAX_ANGLE - degree {
-            SERVO_MAX_ANGLE
-        } else if update <= 0 {
-            degree + update.abs() as u8
-        } else if update > 0 {
-            degree + update as u8
-        } else {
-            degree
-        }
-    }
-
-    Ok(())
-}
-
-async fn reset(i2c_bus: &mut I2c) -> std::io::Result<()> {
+fn reset(i2c_bus: &mut I2c) -> std::io::Result<()> {
     i2c_bus.smbus_write_byte_data(PCA9685_MODE1, 0x80)?;
 
-    delay(10).await;
+    delay(10);
 
     Ok(())
 }
 
-async fn set_pwm_frequency(i2c_bus: &mut I2c, mut frequency: f32) -> std::io::Result<()> {
+fn set_pwm_frequency(i2c_bus: &mut I2c, mut frequency: f32) -> std::io::Result<()> {
     frequency *= 0.9;  // Correct for overshoot in the frequency setting.
 
     let mut prescale_value = 25000000_f32;
@@ -121,7 +99,7 @@ async fn set_pwm_frequency(i2c_bus: &mut I2c, mut frequency: f32) -> std::io::Re
     i2c_bus.smbus_write_byte_data(PCA9685_PRESCALE, prescale)?;
     i2c_bus.smbus_write_byte_data(PCA9685_MODE1, old_mode)?;
 
-    delay(5).await;
+    delay(5);
 
     i2c_bus.smbus_write_byte_data(PCA9685_MODE1, old_mode | 0xA0)?;
 
@@ -151,8 +129,8 @@ fn set_channel_degree(i2c_bus: &mut I2c, channel: u8, mut degree: u8) -> std::io
     Ok(())
 }
 
-async fn delay(millis: u64) {
-    tokio::time::sleep(std::time::Duration::from_millis(millis)).await
+fn delay(millis: u64) {
+    std::thread::sleep(std::time::Duration::from_millis(millis));
 }
 
 trait ServoResult<T> {
