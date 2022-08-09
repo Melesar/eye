@@ -43,7 +43,7 @@ async fn main() -> Result<(), std::io::Error> {
     std::thread::sleep(std::time::Duration::from_secs(1));
 
     let mut rotate_request = ServoRotateRequest::default();
-    rotate_request.dx = 1;
+    rotate_request.dx = 10;
     rotate_request.dy = 0;
     buffer.clear();
     match rotate_request.encode(&mut buffer) {

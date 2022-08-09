@@ -14,6 +14,7 @@ const DEFAULT_PWM_FREQUENCY : f32 = 60_f32;
 
 const SERVO_UP_CHANNEL : u8 = 0_u8;
 const SERVO_DOWN_CHANNEL : u8 = 1_u8;
+const SERVO_MAX_ANGLE : u8 = 180_u8;
 
 struct ServoControl {
     pub x: i8,
@@ -62,13 +63,36 @@ async fn run_servo(mut i2c_bus: I2c, mut receiver: mpsc::Receiver<ServoControl>)
 
     frequency_result.communication_failure()?;
 
-    let degree_result = set_servo_degree(&mut i2c_bus, SERVO_UP_CHANNEL, 90).and(set_servo_degree(&mut i2c_bus, SERVO_DOWN_CHANNEL, 90));
+    let mut up_degree : u8 = 90;
+    let mut down_degree : u8 = 90;
+    let degree_result = set_servo_degree(&mut i2c_bus, up_degree, down_degree);
     println!("Degree: {:?}", degree_result);
 
     degree_result.communication_failure()?;
 
-    while let Some(_control) = receiver.recv().await {
-        //Rotate the servo
+    while let Some(control) = receiver.recv().await {
+        down_degree = update_degree(down_degree, control.x);
+        up_degree = update_degree(up_degree, control.y);
+
+        println!("Up: {}, down: {}", up_degree, down_degree);
+
+        set_servo_degree(&mut i2c_bus, up_degree, down_degree).communication_failure()?;
+    }
+
+    println!("Servo shutting down");
+
+    fn update_degree(degree: u8, update: i8) -> u8 {
+        if update < 0 && update.abs() as u8 > degree {
+            0
+        } else if update > 0 && update as u8 > SERVO_MAX_ANGLE - degree {
+            SERVO_MAX_ANGLE
+        } else if update <= 0 {
+            degree + update.abs() as u8
+        } else if update > 0 {
+            degree + update as u8
+        } else {
+            degree
+        }
     }
 
     Ok(())
@@ -104,7 +128,14 @@ async fn set_pwm_frequency(i2c_bus: &mut I2c, mut frequency: f32) -> std::io::Re
     Ok(())
 }
 
-fn set_servo_degree(i2c_bus: &mut I2c, channel: u8, mut degree: u8) -> std::io::Result<()> {
+fn set_servo_degree(i2c_bus: &mut I2c, up_degree: u8, down_degree: u8) -> std::io::Result<()> {
+    set_channel_degree(i2c_bus, SERVO_UP_CHANNEL, up_degree)?;
+    set_channel_degree(i2c_bus, SERVO_DOWN_CHANNEL, down_degree)?;
+
+    Ok(())
+}
+
+fn set_channel_degree(i2c_bus: &mut I2c, channel: u8, mut degree: u8) -> std::io::Result<()> {
     degree = degree.max(0).min(180);
 
     const PULSE_LENGTH : f64 = 1000.0 / 60.0 / 4096.0;
