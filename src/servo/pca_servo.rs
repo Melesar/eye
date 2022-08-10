@@ -3,7 +3,7 @@ use super::{Servo, Error};
 type I2c = i2c_linux::I2c<std::fs::File>;
 
 const I2C_DEVICE : &str = "/dev/i2c-1";
-const I2C_ADDRESS : u16 = 0x80 >> 1;
+const I2C_ADDRESS : u16 = 0x40;
 
 const PCA9685_MODE1 : u8 = 0x0;
 const PCA9685_PRESCALE : u8 = 0xFE;
@@ -14,6 +14,8 @@ const DEFAULT_PWM_FREQUENCY : f32 = 60_f32;
 const SERVO_UP_CHANNEL : u8 = 0_u8;
 const SERVO_DOWN_CHANNEL : u8 = 1_u8;
 const SERVO_MAX_ANGLE : u8 = 180_u8;
+const SERVO_UP_DEFAULT_ANGLE : u8 = 90_u8;
+const SERVO_DOWN_DEFAULT_ANGLE : u8 = 90_u8;
 
 pub struct Pca9685Servo {
     i2c_bus: I2c,
@@ -25,8 +27,6 @@ impl Servo for Pca9685Servo {
     fn rotate(&mut self, dx: i8, dy: i8) {
         self.down_degree = update_degree(self.down_degree, dx);
         self.up_degree = update_degree(self.up_degree, dy);
-
-        println!("Up: {}, down: {}", self.up_degree, self.down_degree);
 
         if let Err(e) = set_servo_degree(&mut self.i2c_bus, self.up_degree, self.down_degree) {
             eprintln!("Failed to rotate servo: {}", e);
@@ -51,26 +51,15 @@ impl Servo for Pca9685Servo {
 impl Pca9685Servo {
     pub fn new () -> Result<Self, Error> {
         let mut i2c_bus = I2c::from_path(I2C_DEVICE).device_unavailable()?;
-        let result = i2c_bus.smbus_set_slave_address(I2C_ADDRESS, false);
-        println!("Setting slave address: {:?}", result);
-        result.device_unavailable()?;
+        i2c_bus.smbus_set_slave_address(I2C_ADDRESS, false).device_unavailable()?;
              
-        let reset_result  = reset(&mut i2c_bus);
-        println!("Reset: {:?}", reset_result);
+        reset(&mut i2c_bus).communication_failure()?;
+        set_pwm_frequency(&mut i2c_bus, DEFAULT_PWM_FREQUENCY).communication_failure()?;
 
-        reset_result.communication_failure()?;
+        let up_degree : u8 = SERVO_UP_DEFAULT_ANGLE;
+        let down_degree : u8 = SERVO_DOWN_DEFAULT_ANGLE;
 
-        let frequency_result = set_pwm_frequency(&mut i2c_bus, DEFAULT_PWM_FREQUENCY);
-        println!("Frequency {:?}", frequency_result);
-
-        frequency_result.communication_failure()?;
-
-        let up_degree : u8 = 90;
-        let down_degree : u8 = 90;
-        let degree_result = set_servo_degree(&mut i2c_bus, up_degree, down_degree);
-        println!("Degree: {:?}", degree_result);
-
-        degree_result.communication_failure()?;
+        set_servo_degree(&mut i2c_bus, up_degree, down_degree).communication_failure()?;
 
         Ok(Pca9685Servo{i2c_bus, up_degree, down_degree})
     }
