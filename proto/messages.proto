@@ -9,6 +9,7 @@ message HelloRequest {
 message HelloResponse {
 	string streamHost = 1;
 	int32 streamPort = 2;
+	uint32 featureSet = 3;
 }
 
 message ServoRotateRequest {

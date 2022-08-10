@@ -30,6 +30,11 @@ pub mod messages {
     include!(concat!(env!("OUT_DIR"), "/messages.rs"));
 }
 
+mod features {
+    pub const CAMERA: u32 = 1 << 0;
+    pub const SERVO: u32 = 1 << 1; 
+}
+
 #[derive(Debug, Clone)]
 enum Event {
     Connected,
@@ -123,6 +128,7 @@ async fn on_hello_request(sender_id: u32, _request: HelloRequest, server: &mut S
         let message = messages::HelloResponse { 
             stream_host: crate::get_current_ip_address().to_string(),
             stream_port: camera_port as i32,
+            feature_set: get_feature_set(),
         };
         networking::send_message(connection, MessageType::HelloResponse, message).await.unwrap_or_default();
     }
@@ -203,4 +209,15 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
     }
 
     Ok(())
+}
+
+fn get_feature_set() -> u32 {
+    let mut features = features::CAMERA;
+
+    #[cfg(feature="servo")]
+    {
+        features |= features::SERVO;
+    }
+
+    features
 }
