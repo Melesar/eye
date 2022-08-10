@@ -13,6 +13,7 @@ pub mod messages {
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
     let sender = "192.168.1.251:6688".parse().unwrap();
+    // let sender = "0.0.0.0:6688".parse().unwrap();
     let mut tcp_stream = TcpSocket::new_v4()?.connect(sender).await?;
     tcp_stream.write_u32_le(0).await?;
 
@@ -46,10 +47,13 @@ async fn main() -> Result<(), std::io::Error> {
     rotate_request.dx = 10;
     rotate_request.dy = 0;
     buffer.clear();
+    let request_len = rotate_request.encoded_len();
     match rotate_request.encode(&mut buffer) {
         Ok(_) => {
             for i in 0..3 {
                 println!("Rotating {}...", i + 1);
+                tcp_stream.write_u32_le(2).await?;
+                tcp_stream.write_u32_le(request_len as u32).await?;
                 tcp_stream.write_all(&mut buffer).await?;
                 std::thread::sleep(std::time::Duration::from_secs(2));
             }

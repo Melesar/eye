@@ -188,6 +188,7 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
                 }))
                 .await
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                current_state = ReadState::MsgType;
             },
         }
 
