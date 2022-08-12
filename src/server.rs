@@ -68,6 +68,7 @@ impl Server {
     }
     
     pub async fn start(mut self) -> Result<(), std::io::Error> {
+        println!("Features: {}", get_feature_set());
         let listener = tokio::net::TcpListener::bind("0.0.0.0:6688").await.unwrap();
         let (tx, mut rx) = tokio::sync::mpsc::channel(10);
         let mut currently_connected = 0_u32;
@@ -177,7 +178,18 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
                 current_state = ReadState::Payload;
             },
             ReadState::Payload => {
-                //TODO handle empty messages with 0 bytes payload
+                if message_length == 0 {
+                    sender.send(Event::MessageReceived(ReceivedMessage {
+                        sender_id: client_id,
+                        msg_type: current_message_type,
+                        payload: buffer.clone()
+                    }))
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                    current_state = ReadState::MsgType;
+                    continue;
+                }
+
                 if buffer.len() < message_length {
                     buffer.resize(message_length, 0);
                 }
@@ -186,7 +198,6 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
                 if disconnect_if_none_is_read(bytes_read, &sender).await { break; }
                 else if bytes_read < buffer.len() { continue; }
 
-
                 sender.send(Event::MessageReceived(ReceivedMessage {
                     sender_id: client_id,
                     msg_type: current_message_type,
@@ -194,7 +205,9 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
                 }))
                 .await
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
                 current_state = ReadState::MsgType;
+                buffer.clear();
             },
         }
 
@@ -206,6 +219,7 @@ async fn handle_client_connection<R>(reader: R, sender: Sender<Event>, client_id
 
             false
         }
+
     }
 
     Ok(())
