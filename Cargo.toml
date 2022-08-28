@@ -13,6 +13,7 @@ bytes = "1.1.0"
 xdg = "2.4.1"
 i2c-linux = {version = "0.1.2", optional = true}
 libmath = "0.2.1"
+color-eyre = "*"
 
 [features]
 servo = ["dep:i2c-linux"]

@@ -4,7 +4,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc::Sender;
 
-use crate::{camera, servo, networking};
+use crate::{camera, servo::Servo, networking};
 use networking::MessageType;
 
 use self::messages::{HelloRequest, ServoRotateRequest};
@@ -57,13 +57,13 @@ struct ReceivedMessage {
 
 pub struct Server {
     camera: Box<dyn camera::Camera>,
-    servo: Option<Box<dyn servo::Servo>>,
+    servo: Option<Servo>,
     client_connections: HashMap<u32, OwnedWriteHalf>
 }
 
 impl Server {
 
-    pub fn new(camera: Box<dyn camera::Camera>, servo: Option<Box<dyn servo::Servo>>) -> Self {
+    pub fn new(camera: Box<dyn camera::Camera>, servo: Option<Servo>) -> Self {
         Server { camera, servo, client_connections: HashMap::new() }
     }
     

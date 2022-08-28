@@ -2,13 +2,13 @@ use std::io::SeekFrom;
 use std::io::Seek;
 use messages::{HelloRequest, HelloResponse, ServoRotateRequest};
 use prost::Message;
+use tokio::net::TcpStream;
 use tokio::{net::TcpSocket, io::{AsyncWriteExt, AsyncReadExt}};
 use std::io::Cursor;
 
 pub mod messages {
     include!(concat!(env!("OUT_DIR"), "/messages.rs"));
 }
-
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -43,25 +43,31 @@ async fn main() -> Result<(), std::io::Error> {
 
     std::thread::sleep(std::time::Duration::from_secs(1));
 
-    let mut rotate_request = ServoRotateRequest::default();
-    rotate_request.dx = 10;
-    rotate_request.dy = 0;
-    buffer.clear();
-    let request_len = rotate_request.encoded_len();
-    match rotate_request.encode(&mut buffer) {
-        Ok(_) => {
-            for i in 0..3 {
-                println!("Rotating {}...", i + 1);
-                tcp_stream.write_u32_le(2).await?;
-                tcp_stream.write_u32_le(request_len as u32).await?;
-                tcp_stream.write_all(&mut buffer).await?;
-                std::thread::sleep(std::time::Duration::from_secs(2));
-            }
-        },
-        
-        Err(e) => eprintln!("Failed to encode rotate message {}", e),
-    }
+    rotate(2, 0, &mut tcp_stream, &mut buffer).await?;
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    rotate(0, 3, &mut tcp_stream, &mut buffer).await?;
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    rotate(0, 0, &mut tcp_stream, &mut buffer).await?;
 
+    Ok(())
+}
+
+async fn rotate(dx: i32, dy: i32, stream: &mut TcpStream, buffer: &mut Vec<u8>) -> Result<(), std::io::Error> {
+    let mut request = ServoRotateRequest::default();
+    request.dx = dx;
+    request.dy = dy;
+    buffer.clear();
+    println!("Rotating ({}, {})", dx, dy);
+
+    let request_len = request.encoded_len();
+    match request.encode(buffer) {
+        Ok(_) => {
+            stream.write_u32_le(2).await?;
+            stream.write_u32_le(request_len as u32).await?;
+            stream.write_all(buffer).await?;
+        },
+        Err(e) => eprintln!("Failed to encode message"),
+    };
 
     Ok(())
 }

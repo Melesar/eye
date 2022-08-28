@@ -1,4 +1,4 @@
-use super::{Servo, Error};
+use super::{ServoImpl, Error};
 
 type I2c = i2c_linux::I2c<std::fs::File>;
 
@@ -23,7 +23,7 @@ pub struct Pca9685Servo {
     down_degree: u8,
 }
 
-impl Servo for Pca9685Servo {
+impl ServoImpl for Pca9685Servo {
     fn rotate(&mut self, dx: i8, dy: i8) {
         self.down_degree = update_degree(self.down_degree, dx);
         self.up_degree = update_degree(self.up_degree, dy);
@@ -64,6 +64,8 @@ impl Pca9685Servo {
         Ok(Pca9685Servo{i2c_bus, up_degree, down_degree})
     }
 }
+
+unsafe impl Send for Pca9685Servo { }
 
 fn reset(i2c_bus: &mut I2c) -> std::io::Result<()> {
     i2c_bus.smbus_write_byte_data(PCA9685_MODE1, 0x80)?;
