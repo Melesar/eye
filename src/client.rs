@@ -41,11 +41,15 @@ async fn main() -> Result<(), std::io::Error> {
         Err(e) => eprintln!("Failed to decode response: {}", e),
     }
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    std::thread::sleep(std::time::Duration::from_secs(10));
 
     rotate(2, 0, &mut tcp_stream, &mut buffer).await?;
     std::thread::sleep(std::time::Duration::from_secs(4));
     rotate(0, 3, &mut tcp_stream, &mut buffer).await?;
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    rotate(-5, 0, &mut tcp_stream, &mut buffer).await?;
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    rotate(0, -10, &mut tcp_stream, &mut buffer).await?;
     std::thread::sleep(std::time::Duration::from_secs(4));
     rotate(0, 0, &mut tcp_stream, &mut buffer).await?;
 

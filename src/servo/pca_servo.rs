@@ -9,13 +9,13 @@ const PCA9685_MODE1 : u8 = 0x0;
 const PCA9685_PRESCALE : u8 = 0xFE;
 const LED0_ON_L : u8 = 0x6;
 
-const DEFAULT_PWM_FREQUENCY : f32 = 60_f32;
+const DEFAULT_PWM_FREQUENCY : f32 = 60.0;
 
-const SERVO_UP_CHANNEL : u8 = 0_u8;
-const SERVO_DOWN_CHANNEL : u8 = 1_u8;
-const SERVO_MAX_ANGLE : u8 = 180_u8;
-const SERVO_UP_DEFAULT_ANGLE : u8 = 90_u8;
-const SERVO_DOWN_DEFAULT_ANGLE : u8 = 90_u8;
+const SERVO_UP_CHANNEL : u8 = 0;
+const SERVO_DOWN_CHANNEL : u8 = 1;
+const SERVO_MAX_ANGLE : u8 = 180;
+const SERVO_UP_DEFAULT_ANGLE : u8 = 90;
+const SERVO_DOWN_DEFAULT_ANGLE : u8 = 90;
 
 pub struct Pca9685Servo {
     i2c_bus: I2c,
@@ -28,21 +28,18 @@ impl ServoImpl for Pca9685Servo {
         self.down_degree = update_degree(self.down_degree, dx);
         self.up_degree = update_degree(self.up_degree, dy);
 
+        println!("New degrees: ({}, {})", self.down_degree, self.up_degree);
+
         if let Err(e) = set_servo_degree(&mut self.i2c_bus, self.up_degree, self.down_degree) {
             eprintln!("Failed to rotate servo: {}", e);
         }
 
         fn update_degree(degree: u8, update: i8) -> u8 {
-            if update < 0 && update.abs() as u8 > degree {
-                0
-            } else if update > 0 && update as u8 > SERVO_MAX_ANGLE - degree {
-                SERVO_MAX_ANGLE
-            } else if update <= 0 {
-                degree + update.abs() as u8
-            } else if update > 0 {
-                degree + update as u8
+            let abs_upd = update.abs() as u8;
+            if update > 0 {
+                degree.checked_add(abs_upd).unwrap_or(SERVO_MAX_ANGLE).min(SERVO_MAX_ANGLE)
             } else {
-                degree
+                degree.checked_sub(abs_upd).unwrap_or(0)
             }
         }
     }
@@ -105,7 +102,7 @@ fn set_servo_degree(i2c_bus: &mut I2c, up_degree: u8, down_degree: u8) -> std::i
 }
 
 fn set_channel_degree(i2c_bus: &mut I2c, channel: u8, mut degree: u8) -> std::io::Result<()> {
-    degree = degree.max(0).min(180);
+    degree = degree.max(0).min(SERVO_MAX_ANGLE);
 
     const PULSE_LENGTH : f64 = 1000.0 / 60.0 / 4096.0;
     
